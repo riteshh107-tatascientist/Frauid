@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: fraudguard-postgres
+    environment:
+      POSTGRES_USER: fraudguard
+      POSTGRES_PASSWORD: fraudguard_dev_pass
+      POSTGRES_DB: fraudguard_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    networks:
+      - fraudguard-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fraudguard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fraudguard-backend
+    environment:
+      DATABASE_URL: postgresql://fraudguard:fraudguard_dev_pass@postgres:5432/fraudguard_db
+      JWT_SECRET_KEY: dev-secret-key-change-in-production
+      DEBUG: "True"
+      ENVIRONMENT: development
+      CORS_ORIGINS: '["http://localhost:5173", "http://localhost:3000", "http://localhost"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    networks:
+      - fraudguard-network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  postgres_data:
+
+networks:
+  fraudguard-network:
+    driver: bridge
